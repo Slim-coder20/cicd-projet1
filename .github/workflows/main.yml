@@ -42,6 +42,10 @@ jobs:
       # Lance les tests Jest en mode CI (avec coverage)
       - name: execute les tests
         run: npm run test:ci
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       # Vérifie le style et les erreurs de code avec ESLint
       - name: verifie le code
