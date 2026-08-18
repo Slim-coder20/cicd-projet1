@@ -79,24 +79,24 @@ jobs:
 
       # Connexion SSH au VPS, copie des fichiers, install prod, démarrage PM2
       - name: deployer sur le serveur
+        # Démarre l'agent SSH qui va garder la clé privée en mémoire
+        # Crée le dossier SSH s'il n'existe pas
+        # 700 = seul le propriétaire peut entrer dans ~/.ssh (exigé par SSH)
+        # Écrit la clé privée stockée dans le secret GitHub SSH_KEY_VPS
+        # 600 = seul le propriétaire peut lire/écrire la clé privée
+        # Charge la clé dans l'agent SSH pour scp et ssh
+        # Enregistre l'empreinte du VPS pour éviter le prompt "unknown host"
+        # Copie le dossier server vers /var/www sur le VPS
+        # Installe uniquement les dépendances de production (sans jest, eslint, etc.)
+        # Démarre ou redémarre l'app avec PM2 en mode production, puis sauvegarde la config
         run: |
-          # Démarre l'agent SSH qui va garder la clé privée en mémoire
           eval "$(ssh-agent -s)"
-          # Crée le dossier SSH s'il n'existe pas
           mkdir -p ~/.ssh
-          # 700 = seul le propriétaire peut entrer dans ~/.ssh (exigé par SSH)
           chmod 700 ~/.ssh
-          # Écrit la clé privée stockée dans le secret GitHub SSH_KEY_VPS
           printf '%s\n' "${{ secrets.SSH_KEY_VPS }}" > ~/.ssh/deploy_key
-          # 600 = seul le propriétaire peut lire/écrire la clé privée
           chmod 600 ~/.ssh/deploy_key
-          # Charge la clé dans l'agent SSH pour scp et ssh
           ssh-add ~/.ssh/deploy_key
-          # Enregistre l'empreinte du VPS pour éviter le prompt "unknown host"
           ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
-          # Copie le dossier server vers /var/www sur le VPS
           scp -r ./server "$SERVER_USER@$SERVER_IP:/var/www"
-          # Installe uniquement les dépendances de production (sans jest, eslint, etc.)
           ssh "$SERVER_USER@$SERVER_IP" "cd /var/www/server && npm install --omit=dev"
-          # Démarre ou redémarre l'app avec PM2 en mode production, puis sauvegarde la config
           ssh "$SERVER_USER@$SERVER_IP" "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
