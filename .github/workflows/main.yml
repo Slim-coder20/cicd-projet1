@@ -16,7 +16,7 @@ jobs:
   # ------------------------------------------------------------------
   # Job 1 : tests — vérifie le backend avant de déployer
   # ------------------------------------------------------------------
-  tests:
+  check-tests-backend:
     runs-on: ubuntu-latest # Machine virtuelle Ubuntu fournie par GitHub
     defaults:
       run:
@@ -65,17 +65,93 @@ jobs:
       - name: verfie les vulnerabilites des dependences
         run: npm audit
         continue-on-error: true
+  # ------------------------------------------------------------------
+  # Job 2 : tests — vérifie le frontend avant de déployer
+  # ------------------------------------------------------------------
+  check-frontend:
+    runs-on: ubuntu-latest # Machine virtuelle Ubuntu fournie par GitHub
+    defaults:
+      run:
+        # Toutes les commandes "run" de ce job s'exécutent dans ./client
+        working-directory: ./client
+    steps:
+      # Récupère le code du dépôt sur le runner GitHub
+      - name: checkout le code
+        uses: actions/checkout@v4
+
+      # Installe Node.js 20 et met en cache les paquets npm
+      - name: installer node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'                         # Version de Node utilisée en CI
+          cache: 'npm'                               # Cache npm pour accélérer les prochains runs
+          cache-dependency-path: ./client/package-lock.json # Fichier qui sert de clé au cache
+
+      # Installe les dépendances de façon reproductible (d'après package-lock.json)
+      - name: install dependencies
+        run: npm ci --prefer-offline
+      # Vérifie le style et les erreurs de code avec ESLint
+      - name: verifie le code
+        run: npm run lint
+      # Analyse les failles connues dans les dépendances npm
+      # continue-on-error: l'étape peut échouer sans bloquer le job (donc le deploy)
+      - name: verfie les vulnerabilites des dependences
+        run: npm audit
+        continue-on-error: true
 
   # ------------------------------------------------------------------
-  # Job 2 : deploy — copie le backend sur le VPS et relance l'app
+  # Job 3 : build — compile le frontend Vue/Vite pour la production
+  # ------------------------------------------------------------------
+  build-frontend:
+    needs: check-frontend          # Ne démarre que si le lint/audit frontend a réussi
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Toutes les commandes "run" de ce job s'exécutent dans ./client
+        working-directory: ./client
+    steps:
+      # Le runner de build est une autre machine : il faut re-récupérer le code
+      - name: checkout le code
+        uses: actions/checkout@v4
+
+      # Installe Node.js 20 et met en cache les paquets npm
+      - name: installer node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'                         # Version de Node utilisée en CI
+          cache: 'npm'                               # Cache npm pour accélérer les prochains runs
+          cache-dependency-path: ./client/package-lock.json # Fichier qui sert de clé au cache
+
+      # Installe les dépendances de façon reproductible (d'après package-lock.json)
+      - name: install dependencies
+        run: npm ci --prefer-offline
+
+      # Compile le frontend (type-check + vite build)
+      - name: build application frontend
+        run: npm run build
+      # utiliser un artifact 
+      - name: upload build artefact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build 
+          path: ./client/dist
+
+  # ------------------------------------------------------------------
+  # Job 4 : deploy — copie le backend sur le VPS et relance l'app
   # ------------------------------------------------------------------
   deploy:
-    needs: tests          # Ne démarre que si le job tests a réussi
+    needs: [check-tests-backend, build-frontend]          # Ne démarre que si backend et frontend ont réussi
     runs-on: ubuntu-latest
     steps:
       # Le runner de deploy est une autre machine : il faut re-récupérer le code
       - name: checkout le code
         uses: actions/checkout@v4
+      - name: download build artefact
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: ./dist
+
 
       # Connexion SSH au VPS, copie des fichiers, install prod, démarrage PM2
       - name: deployer sur le serveur
@@ -98,5 +174,6 @@ jobs:
           ssh-add ~/.ssh/deploy_key
           ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
           scp -r ./server "$SERVER_USER@$SERVER_IP:/var/www"
+          scp -r ./dist "$SERVER_USER@$SERVER_IP:/var/www/dist"
           ssh "$SERVER_USER@$SERVER_IP" "cd /var/www/server && npm install --omit=dev"
           ssh "$SERVER_USER@$SERVER_IP" "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
