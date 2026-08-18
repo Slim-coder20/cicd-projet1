@@ -42,10 +42,19 @@ jobs:
       # Lance les tests Jest en mode CI (avec coverage)
       - name: execute les tests
         run: npm run test:ci
+
+      # Envoie le rapport de coverage vers Codecov
+      # defaults.run.working-directory ne s'applique PAS aux actions "uses"
+      # donc on pointe explicitement vers les fichiers générés dans ./server/coverage
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./server/coverage/lcov.info,./server/coverage/cobertura-coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
+          flags: backend
+          slug: Slim-coder20/cicd-projet1
 
       # Vérifie le style et les erreurs de code avec ESLint
       - name: verifie le code
