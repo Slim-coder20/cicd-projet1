@@ -152,7 +152,7 @@ jobs:
         with:
           node-version: '20'                         # Version de Node utilisée en CI
           cache: 'npm'                               # Cache npm pour accélérer les prochains runs
-          cache-dependency-path: '**package-lock.json' # Récupérer dans tous les dossiers et sous dossisers le package-lock.json
+          cache-dependency-path: '**/package-lock.json' # Récupérer dans tous les dossiers et sous dossisers le package-lock.json
 
       # Installe les dépendances de façon reproductible (d'après package-lock.json)
       - name: install dependencies
