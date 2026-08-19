@@ -135,12 +135,56 @@ jobs:
         with:
           name: build 
           path: ./client/dist
+  # ------------------------------------------------------------------
+  # Job 4 : Test E2E Frontend 
+  # ------------------------------------------------------------------
+  test-e2e-frontend:
+    needs: build-frontend        # Ne démarre que si le build frontend a réussi
+    runs-on: ubuntu-latest
+    steps:
+      # Le runner de build est une autre machine : il faut re-récupérer le code
+      - name: checkout le code
+        uses: actions/checkout@v4
+
+      # Installe Node.js 20 et met en cache les paquets npm
+      - name: installer node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'                         # Version de Node utilisée en CI
+          cache: 'npm'                               # Cache npm pour accélérer les prochains runs
+          cache-dependency-path: '**package-lock.json' # Récupérer dans tous les dossiers et sous dossisers le package-lock.json
+
+      # Installe les dépendances de façon reproductible (d'après package-lock.json)
+      - name: install dependencies
+        run: |
+          cd server 
+          npm ci --prefer-offline
+
+      # utiliser un artifact 
+      - name: download build artefact
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: ./client/dist
+      - name: start-backend
+        run: |
+          cd server 
+          npm start
+      - name: exec cypress
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: ./client
+          browser: chrome
+          start: npm run preview
+          wait-on: http://localhost:4173
+          wait-on-timeout: 60
+          config: baseUrl=http://localhost:4173
 
   # ------------------------------------------------------------------
-  # Job 4 : deploy — copie le backend sur le VPS et relance l'app
+  # Job 5 : deploy — copie le backend sur le VPS et relance l'app
   # ------------------------------------------------------------------
   deploy:
-    needs: [check-tests-backend, build-frontend]          # Ne démarre que si backend et frontend ont réussi
+    needs: [check-tests-backend, test-e2e-frontend] # Ne démarre que si backend et frontend ont réussi
     runs-on: ubuntu-latest
     steps:
       # Le runner de deploy est une autre machine : il faut re-récupérer le code
